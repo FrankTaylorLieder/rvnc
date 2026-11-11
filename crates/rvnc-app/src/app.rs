@@ -12,7 +12,7 @@ use winit::event_loop::ActiveEventLoop;
 use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
 use winit::window::{Fullscreen, Window, WindowId};
 
-use crate::input::{self, Keyboard, LocalCommand, Pointer, PointerEvent};
+use crate::input::{Keyboard, LocalCommand, Pointer, PointerEvent};
 use crate::present::{Presenter, SoftbufferPresenter};
 use crate::view::{ScaleMode, View, WinRect};
 
@@ -195,7 +195,8 @@ impl App {
             }
             LocalCommand::SendCtrlAltDel => {
                 if !self.opts.view_only {
-                    self.send_keys(&input::ctrl_alt_del());
+                    let keys = self.keyboard.ctrl_alt_del();
+                    self.send_keys(&keys);
                 }
             }
         }

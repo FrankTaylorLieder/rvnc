@@ -71,7 +71,7 @@ All keys go to the remote except a small reserved set with **Cmd-Option** prefix
 | `Cmd-Option-F` | Toggle fullscreen |
 | `Cmd-Option-Delete` | Send Ctrl-Alt-Del sequence |
 
-Reserved shortcuts are consumed locally (never sent, and never added to `pressed`). Cmd-Q leaking a `Super_L` press is avoided by releasing all pressed keys before quitting.
+Reserved shortcuts are consumed locally (never sent, and never added to `pressed`). *Implementation note:* the Cmd and Option presses that start a shortcut have already been sent to the remote as Super and Alt. For Ctrl-Alt-Del that matters, because Windows doesn't recognise Win+Ctrl+Alt+Del. So the sequence first releases any modifiers held on the remote, sends Ctrl, Alt, Delete, and then presses those modifiers again to match the keys still physically held. Cmd-Q leaking a `Super_L` press is avoided by releasing all pressed keys before quitting.
 
 ## Mouse
 

@@ -13,7 +13,7 @@ Requires Rust 1.88 or later. Installs the `rvnc` binary into `~/.cargo/bin`
 
 ```sh
 cargo install --git https://github.com/FrankTaylorLieder/rvnc rvnc-app
-rvnc localhost:1
+rvnc localhost:5901
 ```
 
 To uninstall (use the package name `rvnc-app`, not the binary name):
@@ -26,18 +26,27 @@ cargo uninstall rvnc-app
 
 ```sh
 cargo build --release
-./target/release/rvnc <host>[:display | ::port] [--view-only] [--scale fit|1:1] [--exclusive]
+./target/release/rvnc <host>[:port] [--port PORT | --display N] [--view-only] [--scale fit|1:1] [--exclusive]
 ```
 
 To install from a local checkout:
 
 ```sh
 cargo install --path crates/rvnc-app
-rvnc localhost:1
+rvnc localhost:5901
 ```
 
-Address forms: `host` (port 5900), `host:1` (port 5901), `host::5999` (port
-5999), `[fe80::1]:1` for IPv6.
+Address forms: `host` (port 5900), `host:5901` (port 5901, as in a URL),
+`[fe80::1]:5901` for IPv6. To choose the port with an option instead:
+
+- `--port P` (`-p`) connects to port P.
+- `--display N` (`-d`) connects to VNC display N, which is port 5900 + N.
+  For example, `rvnc myhost -d 1` connects to port 5901.
+
+Either option overrides a port given in the address. They can't be combined.
+
+Unlike TigerVNC and RealVNC, rvnc reads the number after a single colon as a
+port, not a display number, and doesn't accept `host::port`.
 
 Logging: `RUST_LOG=debug ./target/release/rvnc ...` (`trace` on
 `rvnc_client` logs every update; on `rvnc::app` every frame).
@@ -64,15 +73,15 @@ localhost only:
 
 ```sh
 docker compose -f dev/compose.yaml up -d --build
-cargo run --release -p rvnc-app -- localhost:1   # TigerVNC Xvnc
-cargo run --release -p rvnc-app -- localhost:2   # x11vnc on Xvfb
+cargo run --release -p rvnc-app -- localhost:5901   # TigerVNC Xvnc (display 1)
+cargo run --release -p rvnc-app -- localhost:5902   # x11vnc on Xvfb (display 2)
 docker exec rvnc-dev-vnc-1 sh -c 'DISPLAY=:1 xrandr -s 1024x768'  # remote resize
 ```
 
 A headless smoke test that saves the remote screen to a PNG:
 
 ```sh
-cargo run --release -p rvnc-client --example screenshot -- localhost:1 out.png
+cargo run --release -p rvnc-client --example screenshot -- localhost:5901 out.png
 ```
 
 ## Tests

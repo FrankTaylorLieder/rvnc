@@ -2,14 +2,14 @@
 //! to a PNG.
 //!
 //! ```sh
-//! cargo run -p rvnc-client --example screenshot -- localhost:1 out.png
+//! cargo run -p rvnc-client --example screenshot -- localhost:5901 out.png
 //! ```
 
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, bail};
-use rvnc_client::{ConnectOptions, SessionEvent, connect, parse_address};
+use rvnc_client::{ConnectOptions, DEFAULT_PORT, SessionEvent, connect, parse_address};
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -18,9 +18,10 @@ fn main() -> anyhow::Result<()> {
 
     let mut args = std::env::args().skip(1);
     let (Some(addr), Some(out)) = (args.next(), args.next()) else {
-        bail!("usage: screenshot <host[:display|::port]> <out.png>");
+        bail!("usage: screenshot <host[:port]> <out.png>");
     };
     let (host, port) = parse_address(&addr).map_err(anyhow::Error::msg)?;
+    let port = port.unwrap_or(DEFAULT_PORT);
 
     let start = Instant::now();
     let (tx, rx) = mpsc::channel();

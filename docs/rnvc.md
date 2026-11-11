@@ -37,7 +37,7 @@ Full detail and task lists: [plan.md](plan.md)
 - No TLS
 - No authentication
 
-Done when: `rvnc <host>[:display]` shows and controls a TigerVNC desktop (`-SecurityTypes None`) on the LAN. That includes correct updates, keyboard, mouse and scrolling, handling a remote resolution change, and a clear error for a disconnect or a server that requires auth.
+Done when: `rvnc <host>[:port]` shows and controls a TigerVNC desktop (`-SecurityTypes None`) on the LAN. That includes correct updates, keyboard, mouse and scrolling, handling a remote resolution change, and a clear error for a disconnect or a server that requires auth.
 
 | Milestone | Outcome | Est. |
 |---|---|---|

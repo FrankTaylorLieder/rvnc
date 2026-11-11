@@ -9,7 +9,7 @@ mod framebuffer;
 mod handshake;
 mod session;
 
-pub use address::{DEFAULT_PORT, parse_address};
+pub use address::{DEFAULT_PORT, display_port, parse_address};
 pub use error::ConnectError;
 pub use framebuffer::Framebuffer;
 pub use handshake::{NoneSecurity, SecurityHandler};

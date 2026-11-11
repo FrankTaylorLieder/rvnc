@@ -142,7 +142,7 @@ We send `SetPixelFormat` immediately after `ServerInit` asking for **32 bpp, dep
 | `softbuffer` 0.4 | CPU framebuffer presentation |
 | `thiserror`, `anyhow` | Errors |
 | `tracing`, `tracing-subscriber` | Logging |
-| `clap` | CLI parsing (`rvnc host[:display|::port]`) |
+| `clap` | CLI parsing (`rvnc host[:port] [--port P | --display N]`) |
 
 Deliberately *not* in MVP: `tokio`, `wgpu`, `flate2`/`zlib` (needed for ZRLE/Tight later), `des` (needed for VNC auth later).
 

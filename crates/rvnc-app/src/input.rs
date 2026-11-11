@@ -130,6 +130,31 @@ impl Keyboard {
         }
     }
 
+    /// A clean Ctrl-Alt-Del. The local shortcut (Cmd-Option-Delete) means
+    /// Super and Alt are already down on the remote, and Windows ignores
+    /// Win+Ctrl+Alt+Del. So release held modifiers first, send the sequence,
+    /// then press them again to match the keys the user is still holding.
+    pub fn ctrl_alt_del(&self) -> Vec<(u32, bool)> {
+        let mut held: Vec<u32> = self
+            .pressed
+            .values()
+            .copied()
+            .filter(|s| is_modifier(*s))
+            .collect();
+        held.sort_unstable();
+        let mut out: Vec<(u32, bool)> = held.iter().map(|s| (*s, false)).collect();
+        out.extend_from_slice(&[
+            (keysym::CONTROL_L, true),
+            (keysym::ALT_L, true),
+            (keysym::DELETE, true),
+            (keysym::DELETE, false),
+            (keysym::ALT_L, false),
+            (keysym::CONTROL_L, false),
+        ]);
+        out.extend(held.iter().map(|s| (*s, true)));
+        out
+    }
+
     /// Releases every key the remote thinks is down (e.g. on focus loss).
     pub fn release_all(&mut self) -> Vec<(u32, bool)> {
         self.consumed.clear();
@@ -142,18 +167,6 @@ impl Keyboard {
 
 fn is_modifier(sym: u32) -> bool {
     (keysym::SHIFT_L..=keysym::SUPER_R).contains(&sym)
-}
-
-/// The Ctrl-Alt-Del sequence.
-pub fn ctrl_alt_del() -> Vec<(u32, bool)> {
-    vec![
-        (keysym::CONTROL_L, true),
-        (keysym::ALT_L, true),
-        (keysym::DELETE, true),
-        (keysym::DELETE, false),
-        (keysym::ALT_L, false),
-        (keysym::CONTROL_L, false),
-    ]
 }
 
 /// A pointer event: `(x, y, button_mask)`.
@@ -359,6 +372,41 @@ mod tests {
             true,
         );
         assert_eq!(out.command, Some(LocalCommand::SendCtrlAltDel));
+    }
+
+    #[test]
+    fn ctrl_alt_del_releases_held_modifiers_first() {
+        let mut k = Keyboard::default();
+        let sup = Key::Named(NamedKey::Super);
+        let alt = Key::Named(NamedKey::Alt);
+        k.key(code(KeyCode::SuperLeft), &sup, &sup, true);
+        k.set_modifiers(ModifiersState::SUPER);
+        k.key(code(KeyCode::AltLeft), &alt, &alt, true);
+        k.set_modifiers(ModifiersState::SUPER | ModifiersState::ALT);
+        let del = Key::Named(NamedKey::Backspace);
+        let out = k.key(code(KeyCode::Backspace), &del, &del, true);
+        assert_eq!(out.command, Some(LocalCommand::SendCtrlAltDel));
+        use keysym::*;
+        assert_eq!(
+            k.ctrl_alt_del(),
+            [
+                (ALT_L, false),
+                (SUPER_L, false),
+                (CONTROL_L, true),
+                (ALT_L, true),
+                (DELETE, true),
+                (DELETE, false),
+                (ALT_L, false),
+                (CONTROL_L, false),
+                (ALT_L, true),
+                (SUPER_L, true),
+            ]
+        );
+        // Cmd and Option are still tracked as held, so their eventual
+        // releases balance the re-presses.
+        let mut released = k.release_all();
+        released.sort_unstable();
+        assert_eq!(released, [(ALT_L, false), (SUPER_L, false)]);
     }
 
     #[test]

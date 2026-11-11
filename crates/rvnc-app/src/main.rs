@@ -10,7 +10,9 @@ use std::process::ExitCode;
 
 use anyhow::Context;
 use clap::{Parser, ValueEnum};
-use rvnc_client::{ConnectOptions, SessionEvent, connect, parse_address};
+use rvnc_client::{
+    ConnectOptions, DEFAULT_PORT, SessionEvent, connect, display_port, parse_address,
+};
 use tracing_subscriber::EnvFilter;
 use winit::event_loop::EventLoop;
 
@@ -20,8 +22,18 @@ use crate::view::ScaleMode;
 #[derive(Parser, Debug)]
 #[command(version, about)]
 struct Args {
-    /// Server address: host, host:display, host::port, or [ipv6]:display.
+    /// Server address: host, host:port, [ipv6] or [ipv6]:port. The port
+    /// defaults to 5900.
     address: String,
+
+    /// TCP port to connect to. Overrides any port in the address.
+    #[arg(short, long, conflicts_with = "display")]
+    port: Option<u16>,
+
+    /// VNC display number: connect to port 5900 + N. Overrides any port in
+    /// the address.
+    #[arg(short, long)]
+    display: Option<u16>,
 
     /// Don't send keyboard or mouse input.
     #[arg(long)]
@@ -60,7 +72,13 @@ fn main() -> ExitCode {
 }
 
 fn run(args: Args) -> anyhow::Result<()> {
-    let (host, port) = parse_address(&args.address).map_err(anyhow::Error::msg)?;
+    let (host, address_port) = parse_address(&args.address).map_err(anyhow::Error::msg)?;
+    let port = match (args.port, args.display) {
+        (Some(p), _) => p,
+        (None, Some(d)) => display_port(d)
+            .with_context(|| format!("display {d} is out of range (port would exceed 65535)"))?,
+        (None, None) => address_port.unwrap_or(DEFAULT_PORT),
+    };
 
     let event_loop = EventLoop::<SessionEvent>::with_user_event()
         .build()
@@ -74,8 +92,7 @@ fn run(args: Args) -> anyhow::Result<()> {
     let session = connect(&host, port, opts, move |e| {
         // Fails only once the event loop has gone, when nobody cares.
         let _ = proxy.send_event(e);
-    })
-    .with_context(|| format!("connecting to {}", args.address))?;
+    })?;
 
     let mut app = app::App::new(
         session,

@@ -27,7 +27,7 @@ Changes from the original design are recorded in the relevant docs, marked
 
 ## MVP definition of done
 
-`cargo run --release -p rvnc-app -- <host>[:display | ::port]` opens a window showing a remote desktop served by TigerVNC (`-SecurityTypes None`) on the LAN, and:
+`cargo run --release -p rvnc-app -- <host>[:port] [--port P | --display N]` opens a window showing a remote desktop served by TigerVNC (`-SecurityTypes None`) on the LAN, and:
 
 - Display updates with no visible corruption; window drags/scrolls on the remote use CopyRect.
 - Typing, shortcuts, clicks, drags and scrolling work per the checklist in [input.md](input.md#test-checklist-manual-per-milestone).
@@ -69,7 +69,7 @@ Each milestone ends in something runnable. Estimates are rough focused-hours for
 
 ### M3 — Viewer window in `rvnc-app` (≈ 6–8 h)
 
-- [x] CLI parsing (`clap`): `host`, `host:N` (port 5900+N), `host::port`, `--view-only`, `--scale fit|1:1`.
+- [x] CLI parsing (`clap`): `host`, `host:port` (as in URLs), `--port P`, `--display N` (port 5900+N), `--view-only`. This replaced the original TigerVNC-style `host:display` / `host::port` forms, because a single colon reads as a port everywhere else, `--scale fit|1:1`.
 - [x] winit `ApplicationHandler`; spawn session; `EventLoopProxy`-backed `EventSink`.
 - [x] `Presenter` trait + softbuffer implementation; window→fb mapping; Fit (letterboxed, nearest-neighbour) and 1:1 modes; dirty-rect-only copying.
 - [x] Initial window sizing (1:1 physical pixels, clamped to screen).

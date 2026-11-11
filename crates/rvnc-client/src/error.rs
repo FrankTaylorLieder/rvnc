@@ -4,7 +4,8 @@ use rvnc_proto::handshake::security;
 /// Errors establishing a session.
 #[derive(Debug, thiserror::Error)]
 pub enum ConnectError {
-    #[error("could not connect to {addr}: {source}")]
+    // `source` is reported through the error chain, not repeated here.
+    #[error("could not connect to {addr}")]
     Connect {
         addr: String,
         source: std::io::Error,
