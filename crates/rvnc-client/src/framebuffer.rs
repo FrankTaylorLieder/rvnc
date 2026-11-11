@@ -110,8 +110,13 @@ impl Framebuffer {
         self.mark(dst);
     }
 
-    /// Resizes to `width` x `height`, clearing to black.
+    /// Resizes to `width` x `height`, clearing to black. A "resize" to the
+    /// current size (some servers send these) keeps the contents.
     pub fn resize(&mut self, width: u16, height: u16) {
+        if (width, height) == (self.width, self.height) {
+            self.mark(Rect::new(0, 0, width, height));
+            return;
+        }
         self.width = width;
         self.height = height;
         self.pixels.clear();
@@ -182,5 +187,13 @@ mod tests {
         assert_eq!((fb.width(), fb.height(), fb.generation()), (2, 3, 1));
         assert!(fb.pixels().iter().all(|p| *p == 0));
         assert_eq!(fb.take_dirty(), Some(Rect::new(0, 0, 2, 3)));
+    }
+
+    #[test]
+    fn resize_to_same_size_keeps_contents() {
+        let mut fb = numbered(4, 4);
+        fb.resize(4, 4);
+        assert_eq!(fb.generation(), 0);
+        assert_eq!(fb.pixel(3, 3), 51);
     }
 }

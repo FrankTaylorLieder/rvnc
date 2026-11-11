@@ -2,6 +2,9 @@
 set -e
 GEOMETRY="${GEOMETRY:-1280x800}"
 
+# Stale locks from a previous run stop the X servers starting after a restart.
+rm -f /tmp/.X*-lock /tmp/.X11-unix/X*
+
 # TigerVNC on :1 (port 5901), no auth, resizable via xrandr.
 Xvnc :1 -geometry "$GEOMETRY" -depth 24 -SecurityTypes None \
      -AlwaysShared -localhost=0 -rfbport 5901 -AcceptSetDesktopSize=1 &
