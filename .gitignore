@@ -2,3 +2,6 @@
 **/*.rs.bk
 .DS_Store
 *.png
+/crates/rvnc-proto/fuzz/target
+/crates/rvnc-proto/fuzz/corpus
+/crates/rvnc-proto/fuzz/artifacts

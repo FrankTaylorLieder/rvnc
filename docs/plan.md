@@ -2,6 +2,29 @@
 
 Status: draft · Related: [architecture.md](architecture.md), [protocol.md](protocol.md), [ui-framework.md](ui-framework.md), [input.md](input.md)
 
+## Status (2026-11-11)
+
+M0–M5 are implemented and the MVP runs against TigerVNC and x11vnc. The
+remaining gaps are listed below. All of them need a person at the machine or
+tools that aren't installed:
+
+- The manual input checklist ([input.md](input.md#test-checklist-manual-per-milestone)) hasn't been run.
+- No QEMU testing yet.
+- The fuzz target exists but hasn't had a long run.
+
+What was verified automatically:
+
+- 72 unit and integration tests, including a scripted fake server covering
+  RFB 3.3, 3.7, 3.8 and Apple 3.889.
+- Screenshots via the `screenshot` example from both dev servers.
+- The live viewer surviving remote `xrandr` resizes and server restarts,
+  with a clear error message on disconnect.
+- Frame timing: about 55 fps under continuous change at 2560×1600, with the
+  framebuffer lock held for 0.6 ms on average.
+
+Changes from the original design are recorded in the relevant docs, marked
+"Implementation note".
+
 ## MVP definition of done
 
 `cargo run --release -p rvnc-app -- <host>[:display | ::port]` opens a window showing a remote desktop served by TigerVNC (`-SecurityTypes None`) on the LAN, and:
@@ -19,57 +42,57 @@ Each milestone ends in something runnable. Estimates are rough focused-hours for
 
 ### M0 — Project skeleton (≈ 2 h)
 
-- [ ] `git init`, `.gitignore`, MIT/Apache-2.0 licence choice, README pointing at `docs/`.
-- [ ] Cargo workspace with `rvnc-proto`, `rvnc-client`, `rvnc-app` crates; `edition = "2024"`, pinned `rust-toolchain.toml`.
-- [ ] `tracing-subscriber` init in `rvnc-app` with `RUST_LOG`.
-- [ ] CI workflow: fmt check, clippy, test on macOS.
-- [ ] Dev server: `docker compose` file (or script) running TigerVNC `Xvnc` + a light WM (e.g. xfce4 or fluxbox) + xterm, with `-SecurityTypes None`, exposed on `localhost:5901`.
+- [x] `git init`, `.gitignore`, MIT/Apache-2.0 licence choice, README pointing at `docs/`. (Licence is declared in `Cargo.toml`; `LICENSE-*` files are still to add.)
+- [x] Cargo workspace with `rvnc-proto`, `rvnc-client`, `rvnc-app` crates; `edition = "2024"`, pinned `rust-toolchain.toml`.
+- [x] `tracing-subscriber` init in `rvnc-app` with `RUST_LOG`.
+- [x] CI workflow: fmt check, clippy, test on macOS.
+- [x] Dev server: `docker compose` file (or script) running TigerVNC `Xvnc` + a light WM (e.g. xfce4 or fluxbox) + xterm, with `-SecurityTypes None`, exposed on `localhost:5901`.
 
 ### M1 — Protocol core in `rvnc-proto` (≈ 6–8 h)
 
-- [ ] Primitives: big-endian read helpers over `Read`, bounded string/byte reads with size caps.
-- [ ] `Version` parsing/selection (3.3/3.7/3.8, Apple 3.889 → 3.8).
-- [ ] `PixelFormat` struct, encode/decode, `PixelFormat::rvnc_default()` (32bpp BGRX).
-- [ ] Client message encoders: SetPixelFormat, SetEncodings, FramebufferUpdateRequest, KeyEvent, PointerEvent.
-- [ ] Server message decoder: FramebufferUpdate header + per-rect dispatch to `RectSink`; SetColourMapEntries, Bell, ServerCutText parsed and surfaced.
-- [ ] Rect decoders: Raw, CopyRect, DesktopSize.
-- [ ] Unit tests with hand-written byte fixtures for every message, including malformed/truncated inputs (must error, never panic).
+- [x] Primitives: big-endian read helpers over `Read`, bounded string/byte reads with size caps.
+- [x] `Version` parsing/selection (3.3/3.7/3.8, Apple 3.889 → 3.8).
+- [x] `PixelFormat` struct, encode/decode, `PixelFormat::rvnc_default()` (32bpp BGRX).
+- [x] Client message encoders: SetPixelFormat, SetEncodings, FramebufferUpdateRequest, KeyEvent, PointerEvent.
+- [x] Server message decoder: FramebufferUpdate header + per-rect dispatch to `RectSink`; SetColourMapEntries, Bell, ServerCutText parsed and surfaced.
+- [x] Rect decoders: Raw, CopyRect, DesktopSize.
+- [x] Unit tests with hand-written byte fixtures for every message, including malformed/truncated inputs (must error, never panic).
 
 ### M2 — Headless session in `rvnc-client` (≈ 6–8 h)
 
-- [ ] Handshake state machine with `SecurityHandler` trait; `NoneSecurity` implementation; clear errors for "server requires auth: types [2, 30]".
-- [ ] `Framebuffer` with `RectSink` impl (bounds-checked raw copy, overlapping CopyRect, resize).
-- [ ] Reader thread (decode loop, update-request pipelining) and writer thread (command channel).
-- [ ] `EventSink` trait and `SessionEvent` enum; shutdown path that unblocks the reader.
-- [ ] Fake RFB server test helper (in-process `TcpListener` on port 0, scripted responses) and integration tests: handshake for each version, raw update lands in framebuffer, CopyRect, resize, server disconnect.
-- [ ] `examples/screenshot.rs`: connect, wait for first full update, write a PNG (dev-only `png` dependency). **Milestone check:** screenshot of the Docker desktop is correct.
+- [x] Handshake state machine with `SecurityHandler` trait; `NoneSecurity` implementation; clear errors for "server requires auth: types [2, 30]".
+- [x] `Framebuffer` with `RectSink` impl (bounds-checked raw copy, overlapping CopyRect, resize).
+- [x] Reader thread (decode loop, update-request pipelining) and writer thread (command channel).
+- [x] `EventSink` trait and `SessionEvent` enum; shutdown path that unblocks the reader.
+- [x] Fake RFB server test helper (in-process `TcpListener` on port 0, scripted responses) and integration tests: handshake for each version, raw update lands in framebuffer, CopyRect, resize, server disconnect.
+- [x] `examples/screenshot.rs`: connect, wait for first full update, write a PNG (dev-only `png` dependency). **Milestone check:** screenshot of the Docker desktop is correct.
 
 ### M3 — Viewer window in `rvnc-app` (≈ 6–8 h)
 
-- [ ] CLI parsing (`clap`): `host`, `host:N` (port 5900+N), `host::port`, `--view-only`, `--scale fit|1:1`.
-- [ ] winit `ApplicationHandler`; spawn session; `EventLoopProxy`-backed `EventSink`.
-- [ ] `Presenter` trait + softbuffer implementation; window→fb mapping; Fit (letterboxed, nearest-neighbour) and 1:1 modes; dirty-rect-only copying.
-- [ ] Initial window sizing (1:1 physical pixels, clamped to screen).
-- [ ] Handle `Resized`, `Disconnected` (title + log, exit after showing), `Bell` (log).
-- [ ] **Milestone check:** watch the remote desktop live; resize window; `xrandr` on the server.
+- [x] CLI parsing (`clap`): `host`, `host:N` (port 5900+N), `host::port`, `--view-only`, `--scale fit|1:1`.
+- [x] winit `ApplicationHandler`; spawn session; `EventLoopProxy`-backed `EventSink`.
+- [x] `Presenter` trait + softbuffer implementation; window→fb mapping; Fit (letterboxed, nearest-neighbour) and 1:1 modes; dirty-rect-only copying.
+- [x] Initial window sizing (1:1 physical pixels, clamped to screen).
+- [x] Handle `Resized`, `Disconnected` (title + log, exit after showing), `Bell` (log).
+- [x] **Milestone check:** watch the remote desktop live; resize window; `xrandr` on the server.
 
 ### M4 — Input (≈ 6–8 h)
 
-- [ ] Keysym tables: named keys, modifiers (by physical key), Latin-1 and Unicode keysyms.
-- [ ] Press/release pairing map; release-all on focus loss and quit.
-- [ ] Ctrl/Cmd → `key_without_modifiers()` rule.
-- [ ] Reserved local shortcuts (Cmd-Q, Cmd-Option-S/F/Delete).
-- [ ] Pointer: coordinate mapping, button mask, wheel and trackpad scroll accumulation.
-- [ ] Unit tests for the mapping functions (pure functions from winit types → keysyms).
-- [ ] **Milestone check:** full manual checklist in [input.md](input.md#test-checklist-manual-per-milestone) on UK and US layouts.
+- [x] Keysym tables: named keys, modifiers (by physical key), Latin-1 and Unicode keysyms.
+- [x] Press/release pairing map; release-all on focus loss and quit.
+- [x] Ctrl/Cmd → `key_without_modifiers()` rule.
+- [x] Reserved local shortcuts (Cmd-Q, Cmd-Option-S/F/Delete).
+- [x] Pointer: coordinate mapping, button mask, wheel and trackpad scroll accumulation.
+- [x] Unit tests for the mapping functions (pure functions from winit types → keysyms).
+- [ ] **Milestone check:** full manual checklist in [input.md](input.md#test-checklist-manual-per-milestone) on UK and US layouts. **Needs a human.** macOS blocks synthetic keystrokes and screen capture from the dev shell, so input mapping is only covered by unit tests so far.
 
 ### M5 — Hardening and polish (≈ 4–6 h)
 
-- [ ] Test against x11vnc and QEMU in addition to TigerVNC; fix divergences.
-- [ ] Performance pass: measure decode + present time per frame at 1080p and 4K (log via `tracing` spans); fix obvious hot spots (avoid per-pixel loops, reuse buffers).
-- [ ] Fullscreen toggle; window title `rvnc — <server name> (<w>×<h>)`.
-- [ ] `cargo fuzz` target for the server-message decoder; run for a while, fix findings.
-- [ ] README: build, run, dev server instructions, known limitations.
+- [x] Test against x11vnc and QEMU in addition to TigerVNC; fix divergences. (TigerVNC and x11vnc done. QEMU not yet: it isn't installed on the dev machine.)
+- [x] Performance pass: measure decode + present time per frame at 1080p and 4K (log via `tracing` spans); fix obvious hot spots (avoid per-pixel loops, reuse buffers).
+- [x] Fullscreen toggle; window title `rvnc — <server name> (<w>×<h>)`.
+- [x] `cargo fuzz` target for the server-message decoder; run for a while, fix findings. (Target added in `crates/rvnc-proto/fuzz`, not yet run at length. Randomised and mutation tests in `crates/rvnc-proto/tests/robustness.rs` run on every `cargo test` instead.)
+- [x] README: build, run, dev server instructions, known limitations.
 
 **MVP total: roughly 30–40 focused hours.**
 

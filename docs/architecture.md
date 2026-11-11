@@ -77,23 +77,24 @@ Plain OS threads and channels — no async runtime in the MVP. RFB is a single l
 
 ```rust
 // rvnc-client
+// Fields are private, with accessors: width(), height(), pixels(),
+// take_dirty(), generation().
 pub struct Framebuffer {
-    pub width: u16,
-    pub height: u16,
-    pub pixels: Vec<u32>,        // 0x00RRGGBB, row-major, stride == width
-    pub dirty: Option<Rect>,     // union of rects since last present
-    pub generation: u64,         // bumps on resize
+    width: u16,
+    height: u16,
+    pixels: Vec<u32>,        // 0x00RRGGBB, row-major, stride == width
+    dirty: Option<Rect>,     // union of rects since last present
+    generation: u64,         // bumps on resize
 }
 
-pub enum ClientCommand {
-    Key { keysym: u32, down: bool },
-    Pointer { x: u16, y: u16, buttons: u8 },
-    RequestUpdate { incremental: bool, rect: Rect },
+// Internal to the writer thread; the UI uses the InputSender handle
+// (key(), pointer(), send(ClientMessage)).
+enum Command {
+    Send(ClientMessage),
     Shutdown,
 }
 
 pub enum SessionEvent {
-    Connected { name: String, width: u16, height: u16 },
     FramebufferUpdated,
     Resized { width: u16, height: u16 },
     Bell,
@@ -104,12 +105,14 @@ pub trait EventSink: Send + 'static {
     fn send(&self, ev: SessionEvent);
 }
 
-pub fn connect(addr: &str, opts: ConnectOptions, sink: impl EventSink)
+pub fn connect(host: &str, port: u16, opts: ConnectOptions, sink: impl EventSink)
     -> Result<Session, ConnectError>;
 
 impl Session {
-    pub fn framebuffer(&self) -> Arc<Mutex<Framebuffer>>;
-    pub fn commands(&self) -> mpsc::Sender<ClientCommand>;
+    pub fn info(&self) -> &ServerInfo;
+    pub fn framebuffer(&self) -> &Arc<Mutex<Framebuffer>>;
+    pub fn input(&self) -> &InputSender;
+    pub fn close(self);   // also on Drop
 }
 ```
 
@@ -121,6 +124,7 @@ We send `SetPixelFormat` immediately after `ServerInit` asking for **32 bpp, dep
 
 - The reader holds the framebuffer mutex only while writing a rectangle, not across socket reads (decode a rect's bytes into a scratch buffer, then lock and copy). This keeps the UI's lock wait bounded.
 - The UI coalesces: many `FramebufferUpdated` events between frames produce a single `request_redraw`. Redraw copies the framebuffer into the softbuffer surface (with scaling, see [ui-framework.md](ui-framework.md)).
+- The writer coalesces consecutive pointer motion events with unchanged buttons that are queued together, so a burst of mouse moves becomes one message.
 - Update requests are pipelined one at a time: request → wait for the update → request again. This naturally throttles to what the network and server can deliver. (ContinuousUpdates extension is a post-MVP optimisation.)
 
 ### Errors and lifecycle

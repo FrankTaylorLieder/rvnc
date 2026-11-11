@@ -1,0 +1,22 @@
+[package]
+name = "rvnc-proto-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+rvnc-proto = { path = ".." }
+
+# Not part of the main workspace: needs nightly and cargo-fuzz.
+[workspace]
+
+[[bin]]
+name = "server_messages"
+path = "fuzz_targets/server_messages.rs"
+test = false
+doc = false
+bench = false

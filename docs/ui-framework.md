@@ -50,19 +50,38 @@ Reasons:
 
 ## Rendering details
 
-- Window is created at the framebuffer's logical size divided by the display scale factor, so a 1920×1080 remote opens as a 1920×1080 *physical-pixel* window on a Retina display (1:1, crisp). If that exceeds the screen, fit to the screen's visible frame.
+- Window is created with **one framebuffer pixel per logical point**, shrunk to fit within 90% of the screen. *Implementation note:* the original plan was one framebuffer pixel per physical pixel. On Retina that opened a 1280×800 remote as a postage stamp, so we switched. Integer 2× nearest-neighbour upscaling stays crisp, and large remotes are shrunk to fit either way.
 - Two display modes, toggled by a key (MVP: `Cmd-Option-S`; see [input.md](input.md)):
   - **Fit** (default): scale to fit the window preserving aspect ratio, letterbox in dark grey.
   - **1:1**: unscaled, anchored top-left; pixels beyond the window are clipped (scrolling is post-MVP).
 - Keep a cached mapping `window_px → fb_px` (scale + offset) that is used both for rendering and for translating mouse coordinates, so they can never disagree.
 - On `Resized` from the server: recompute the mapping, resize the softbuffer surface if the window size changes, and request a redraw. Window is not auto-resized after the initial open (it's jarring); the user can resize.
-- On `RedrawRequested`: lock the framebuffer, copy (and scale if needed) into the surface buffer, `present()` (or `present_with_damage` for the dirty region where supported), clear `dirty`.
+- On `RedrawRequested`: lock the framebuffer, take `dirty`, render that region (scaled) into a persistent window-sized canvas, **release the lock**, then copy the canvas into the softbuffer buffer and present.
+
+### Implementation note: softbuffer on macOS
+
+Measured at 2560×1600 on the dev machine (Apple Silicon, release build):
+
+| Step | Cost |
+|---|---|
+| Full-frame scaled render (`View::render`, 1280×800 → 2560×1600) | ~1.7 ms |
+| Canvas → buffer memcpy | ~0.4 ms |
+| `buffer_mut()` + `present()` | **~10 ms** |
+
+softbuffer's CoreGraphics backend always reports buffer age 0 and allocates a fresh buffer each frame. Its `present` builds a `CGImage` from the whole buffer and ignores the damage rect. Its layer uses `kCAGravityTopLeft`, so the layer can't do the scaling for us either. Hence:
+
+- The `Presenter` trait is split into `draw` (under the framebuffer lock, damage only) and `present` (lock released). That cut lock hold time from ~12 ms to ~0.6 ms, so the network reader is never stalled by the UI.
+- The overall result is ~55 fps under continuous change. That's acceptable for the MVP, but it is the main argument for the wgpu presenter post-MVP.
+
+### Implementation note: macOS app menu
+
+winit installs a default app menu, so **Cmd-Q, Cmd-H and Cmd-Option-H** are handled by macOS and never reach the remote. Cmd-Q runs `ApplicationHandler::exiting`, which releases held keys and closes the session cleanly. winit also has `WindowAttributesExtMacOS::with_option_as_alt`, a candidate for an "Option is Alt" setting (see [input.md](input.md)).
 
 ## Upgrade path
 
 | Milestone | Change |
 |---|---|
-| M5 (polish) | `muda` native menu bar; window title shows server name + state |
+| Post-MVP (was M5) | `muda` native menu bar. The window title already shows the server name, size, view-only state and scale mode. |
 | Post-MVP | `wgpu` presenter: upload dirty rects to a texture, draw a fullscreen quad with linear filtering; frees CPU, smooth scaling |
 | Post-MVP | `egui` overlay (via `egui-winit` + `egui-wgpu`) for connect dialog, password prompt, settings — rendered on top of the remote view, keyboard routed to egui only while a dialog is open |
 | Long-term option | If Mac polish becomes the priority (Keychain, Bonjour browser, Handoff, sandboxed App Store build), wrap `rvnc-client` in a C ABI / `uniffi` and build a SwiftUI shell. The crate split in [architecture.md](architecture.md) keeps this open. |

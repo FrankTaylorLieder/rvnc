@@ -54,7 +54,7 @@ The awkward case is **Option**: on a Mac, Option+key produces characters (`Optio
 - If `logical_key` is a character that differs from the unmodified key, we send the produced character. Remote sees `Alt_L` down + `numbersign` — X servers usually do the right thing; some apps may see Alt+#.
 - For shortcuts where the user means Alt+key (e.g. Alt-F in a Linux app), the produced character is wrong. winit exposes `KeyEventExtModifierSupplement::key_without_modifiers()` on macOS — when Ctrl or Cmd is held, use the *unmodified* key's keysym, since those combinations are shortcuts, not text.
 
-MVP rule: **if Ctrl or Cmd is held, use `key_without_modifiers()`; otherwise use `logical_key`.** Revisit with real usage. A "raw scancode" mode using the QEMU Extended Key Event pseudo-encoding (sends physical keycodes; ideal for VMs) is post-MVP.
+MVP rule: **if Ctrl or Cmd is held, use `key_without_modifiers()`; otherwise use `logical_key`.** Revisit with real usage. *Implementation note:* winit also offers `with_option_as_alt(OptionAsAlt::Both)` on macOS. It makes Option behave as a plain Alt (no special characters), which is a cheap way to add an "Option is Alt" preference later. A "raw scancode" mode using the QEMU Extended Key Event pseudo-encoding (sends physical keycodes; ideal for VMs) is post-MVP.
 
 ### Dead keys / IME
 
@@ -66,7 +66,7 @@ All keys go to the remote except a small reserved set with **Cmd-Option** prefix
 
 | Shortcut | Action |
 |---|---|
-| `Cmd-Q` | Quit (macOS convention; also via menu) |
+| `Cmd-Q`, `Cmd-H`, `Cmd-Option-H` | Quit / hide / hide others. These come from winit's default macOS app menu, so they never reach the remote. |
 | `Cmd-Option-S` | Toggle Fit / 1:1 scaling |
 | `Cmd-Option-F` | Toggle fullscreen |
 | `Cmd-Option-Delete` | Send Ctrl-Alt-Del sequence |
@@ -92,7 +92,7 @@ Ctrl-click: macOS users expect Ctrl-click = right-click locally, but on a remote
 RFB scroll is discrete: a press+release of button 4 (up), 5 (down), 6 (left), 7 (right) — bits 3–6 of the mask.
 
 - `MouseScrollDelta::LineDelta(x, y)` (mouse wheel): send `round(|y|)` clicks in the corresponding direction.
-- `MouseScrollDelta::PixelDelta(pos)` (trackpad, momentum): accumulate per axis; each time the accumulator passes a threshold (start with ~ 30 logical px; tune) emit one click and subtract. This prevents trackpads producing hundreds of clicks per swipe.
+- `MouseScrollDelta::PixelDelta(pos)` (trackpad, momentum): accumulate per axis; each time the accumulator passes a threshold (start with ~ 30 logical px; tune) emit one click and subtract. This prevents trackpads producing hundreds of clicks per swipe. *Implementation note:* line and pixel deltas share one accumulator measured in clicks. Pixel deltas are divided by 24 logical px per click (`PIXELS_PER_SCROLL_CLICK`), and one event produces at most 10 clicks. Tune after real use.
 - Respect macOS "natural scrolling": winit already reports deltas with the user's direction preference applied, so sending them as-is makes the remote scroll the way the user's Mac does.
 
 ### Cursor display

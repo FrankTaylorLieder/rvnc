@@ -8,6 +8,12 @@ A VNC client built in Rust. Targetted at Mac.
 - Keyboard/mouse support
 - Mac client (other platforms in future)
 
+## Status
+
+The MVP (milestones M0–M5) is implemented. See the [README](../README.md) for
+build and run instructions, and [plan.md](plan.md#status-2026-11-11) for what has
+been verified and what's left.
+
 ## Design summary
 
 Full detail: [architecture.md](architecture.md) · [protocol.md](protocol.md) · [ui-framework.md](ui-framework.md) · [input.md](input.md)

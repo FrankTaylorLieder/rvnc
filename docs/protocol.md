@@ -125,7 +125,7 @@ trait RectSink {
 
 **CopyRect (1):** `u16 src_x, u16 src_y`. Copy a `w × h` region within the framebuffer from source to destination. Source and destination may overlap — use `copy_within` per row, iterating rows bottom-to-top when `dst_y > src_y`. Critical for scrolling/window-drag performance even without compression.
 
-**DesktopSize (-223) pseudo-rect:** `w`, `h` of the rect header are the new framebuffer size; no payload. Reallocate the framebuffer (fill black), bump `generation`, emit `SessionEvent::Resized`, and request a full non-incremental update. Per spec it is the last rect in an update, but don't depend on that.
+**DesktopSize (-223) pseudo-rect:** `w`, `h` of the rect header are the new framebuffer size; no payload. Reallocate the framebuffer (fill black), bump `generation`, emit `SessionEvent::Resized`, and request a full non-incremental update. Per spec it is the last rect in an update, but don't depend on that. *Implementation note:* TigerVNC sometimes sends DesktopSize at the current size around a real resize. A same-size resize keeps the existing contents, to avoid a flash of black.
 
 Encodings we don't advertise must never be received; if one is, fail with a clear error naming the encoding number.
 
