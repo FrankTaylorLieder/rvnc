@@ -6,11 +6,34 @@ A VNC (RFB) viewer for macOS, written in Rust.
 password), using Raw and CopyRect encodings. See [docs/rnvc.md](docs/rnvc.md)
 for the design and roadmap.
 
-## Build and run
+## Install
+
+Requires Rust 1.88 or later. Installs the `rvnc` binary into `~/.cargo/bin`
+(which should be on your `PATH`):
+
+```sh
+cargo install --git https://github.com/FrankTaylorLieder/rvnc rvnc-app
+rvnc localhost:1
+```
+
+To uninstall (use the package name `rvnc-app`, not the binary name):
+
+```sh
+cargo uninstall rvnc-app
+```
+
+## Build and run from source
 
 ```sh
 cargo build --release
 ./target/release/rvnc <host>[:display | ::port] [--view-only] [--scale fit|1:1] [--exclusive]
+```
+
+To install from a local checkout:
+
+```sh
+cargo install --path crates/rvnc-app
+rvnc localhost:1
 ```
 
 Address forms: `host` (port 5900), `host:1` (port 5901), `host::5999` (port
