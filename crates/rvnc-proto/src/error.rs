@@ -31,6 +31,9 @@ pub enum ProtoError {
     #[error("invalid framebuffer size {width}x{height}")]
     BadSize { width: u16, height: u16 },
 
+    #[error("authentication: {0}")]
+    BadAuth(&'static str),
+
     #[error("unsupported pixel format: {0}")]
     BadPixelFormat(&'static str),
 }

@@ -13,7 +13,7 @@ Status: draft for MVP · Related: [protocol.md](protocol.md), [ui-framework.md](
 
 **Non-goals for MVP** (designed for, not built)
 
-- TLS / VeNCrypt, VNC password auth, Apple ARD auth.
+- TLS / VeNCrypt, VNC password auth, Apple ARD auth. (VNC password and ARD auth have since been added; see [auth.md](auth.md).)
 - Compressed encodings (ZRLE, Tight, Hextile), cursor pseudo-encoding.
 - Clipboard sync, file transfer, audio, multiple simultaneous sessions.
 - Connection manager / saved hosts UI, `.app` bundling and notarisation.
@@ -144,10 +144,12 @@ We send `SetPixelFormat` immediately after `ServerInit` asking for **32 bpp, dep
 | `tracing`, `tracing-subscriber` | Logging |
 | `clap` | CLI parsing (`rvnc host[:port] [--port P | --display N]`) |
 
-Deliberately *not* in MVP: `tokio`, `wgpu`, `flate2`/`zlib` (needed for ZRLE/Tight later), `des` (needed for VNC auth later).
+Added with auth: `des`, `aes`, `md-5`, `num-bigint` (`rvnc-proto`), `getrandom`, `zeroize` (`rvnc-client`), `rpassword`, and `security-framework` on macOS only (`rvnc-app`).
+
+Deliberately *not* used: `tokio`, `wgpu`, `flate2`/`zlib` (needed for ZRLE/Tight later).
 
 ## Future-proofing notes
 
 - **Async later:** because `rvnc-proto` is sans-IO, swapping threads for tokio means rewriting only `rvnc-client`'s two loops.
 - **GPU later:** rendering sits behind a `Presenter` trait in `rvnc-app` (`resize`, `present(&Framebuffer, dirty)`), so a wgpu backend can replace softbuffer.
-- **Auth/TLS later:** the handshake is a state machine with a pluggable `SecurityHandler` trait; *None* is the only MVP implementation. TLS wraps the stream before the handshake, so the reader/writer must be generic over `Read`/`Write` rather than hard-coded to `TcpStream` (with a `try_clone`-like split abstraction).
+- **Auth/TLS later:** the handshake is a state machine with a pluggable `SecurityHandler` trait; None, VNC Authentication and ARD are implemented ([auth.md](auth.md)). TLS wraps the stream before the handshake, so the reader/writer must be generic over `Read`/`Write` rather than hard-coded to `TcpStream` (with a `try_clone`-like split abstraction).

@@ -16,15 +16,16 @@ been verified and what's left.
 
 ## Design summary
 
-Full detail: [architecture.md](architecture.md) · [protocol.md](protocol.md) · [ui-framework.md](ui-framework.md) · [input.md](input.md)
+Full detail: [architecture.md](architecture.md) · [protocol.md](protocol.md) · [ui-framework.md](ui-framework.md) · [input.md](input.md) · [auth.md](auth.md)
 
-- **Protocol:** RFB per RFC 6143. Negotiates versions 3.3 / 3.7 / 3.8. MVP supports security type *None*, Raw and CopyRect encodings, and the DesktopSize pseudo-encoding. The client asks the server for 32-bit BGRX pixels so data can be copied straight into the display buffer with no conversion.
+- **Protocol:** RFB per RFC 6143. Negotiates versions 3.3 / 3.7 / 3.8. Supports security types None, VNC Authentication and Apple Remote Desktop (see [auth.md](auth.md)), Raw and CopyRect encodings, and the DesktopSize pseudo-encoding. The client asks the server for 32-bit BGRX pixels so data can be copied straight into the display buffer with no conversion.
 - **Crate layout:** Cargo workspace with three crates:
   - `rvnc-proto`: pure protocol encode/decode, with no I/O, so it is easy to test and fuzz.
   - `rvnc-client`: TCP session, handshake, framebuffer and threads. It has no UI dependency.
   - `rvnc-app`: the macOS window, rendering and input mapping.
 - **Runtime:** no async runtime. A reader thread decodes server messages into a shared `Arc<Mutex<Framebuffer>>` and notifies the UI through winit's `EventLoopProxy`. A writer thread drains a channel of input events and update requests. The UI runs on the main thread and never touches the socket. Update requests are pipelined: after each update arrives, one incremental request is sent.
 - **UI:** `winit` for the window and raw keyboard/mouse events, `softbuffer` for CPU blitting. "Fit" (letterboxed) and 1:1 scaling modes. Rendering sits behind a `Presenter` trait, so a `wgpu` backend and an `egui` overlay can be added later. egui, iced, Tauri and native AppKit were considered and rejected for the MVP, mainly because winit gives the most precise keyboard input (see [ui-framework.md](ui-framework.md)).
+- **Auth:** passwords come from `--password-file`/`RVNC_PASSWORD`, then the macOS keychain, then a terminal prompt. The client crate asks the app for credentials through a `CredentialProvider` trait, only once the server requires them.
 - **Input:** Mac keys are mapped to X11 keysyms. Modifiers are mapped by physical key (Option→Alt, Cmd→Super). Each key release sends the same keysym as its press, tracked by physical key. All held keys are released when the window loses focus. Trackpad scrolling is accumulated into discrete wheel clicks. Local shortcuts use the Cmd-Option prefix.
 
 ## Plan
@@ -50,6 +51,6 @@ Done when: `rvnc <host>[:port]` shows and controls a TigerVNC desktop (`-Securit
 
 ### After MVP (in priority order)
 
-VNC password auth → ZRLE/Tight → cursor pseudo-encoding → resize remote to window → clipboard → Apple ARD auth (macOS Screen Sharing) → TLS → connect dialog/Keychain/Bonjour → wgpu renderer → `.app` bundle and notarisation → Windows/Linux.
+~~VNC password auth~~ (done) → ZRLE/Tight → cursor pseudo-encoding → resize remote to window → clipboard → ~~Apple ARD auth~~ (done) → TLS → connect dialog/Bonjour → wgpu renderer → `.app` bundle and notarisation → Windows/Linux.
 
-Note: macOS's built-in Screen Sharing requires authentication, so the MVP can't connect to it. MVP testing uses TigerVNC/x11vnc/QEMU, and VNC auth is the first item after MVP.
+Note: macOS's built-in Screen Sharing requires authentication. VNC password and Apple Remote Desktop auth are now implemented, and rvnc connects to it.

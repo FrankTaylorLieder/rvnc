@@ -9,7 +9,10 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, bail};
-use rvnc_client::{ConnectOptions, DEFAULT_PORT, SessionEvent, connect, parse_address};
+use rvnc_client::{
+    ConnectOptions, CredentialRequest, Credentials, DEFAULT_PORT, SessionEvent, connect,
+    parse_address,
+};
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -25,7 +28,19 @@ fn main() -> anyhow::Result<()> {
 
     let start = Instant::now();
     let (tx, rx) = mpsc::channel();
-    let session = connect(&host, port, ConnectOptions::default(), move |e| {
+    // Password auth: RVNC_PASSWORD, plus RVNC_USER for Apple Remote Desktop.
+    let opts = ConnectOptions {
+        credentials: Box::new(|req: &CredentialRequest| {
+            let password =
+                std::env::var("RVNC_PASSWORD").map_err(|_| "RVNC_PASSWORD is not set")?;
+            Ok(match std::env::var("RVNC_USER") {
+                Ok(user) if req.username => Credentials::with_username(user, password),
+                _ => Credentials::password(password),
+            })
+        }),
+        ..Default::default()
+    };
+    let session = connect(&host, port, opts, move |e| {
         let _ = tx.send(e);
     })
     .with_context(|| format!("connecting to {addr}"))?;

@@ -2,9 +2,9 @@
 
 A VNC (RFB) viewer for macOS, written in Rust.
 
-**Status:** MVP. Connects to servers that allow security type *None* (no
-password), using Raw and CopyRect encodings. See [docs/rnvc.md](docs/rnvc.md)
-for the design and roadmap.
+**Status:** MVP plus password auth. Connects to servers with no password, a
+VNC password, or a macOS account (Screen Sharing), using Raw and CopyRect
+encodings. See [docs/rnvc.md](docs/rnvc.md) for the design and roadmap.
 
 ## Install
 
@@ -27,6 +27,8 @@ cargo uninstall rvnc-app
 ```sh
 cargo build --release
 ./target/release/rvnc <host>[:port] [--port PORT | --display N] [--view-only] [--scale fit|1:1] [--exclusive]
+                      [--user NAME] [--password-file PATH] [--save-password | --no-keychain]
+                      [--forget-password] [--security none|vnc|ard]
 ```
 
 To install from a local checkout:
@@ -48,6 +50,33 @@ Either option overrides a port given in the address. They can't be combined.
 Unlike TigerVNC and RealVNC, rvnc reads the number after a single colon as a
 port, not a display number, and doesn't accept `host::port`.
 
+## Passwords
+
+rvnc supports VNC passwords (TigerVNC, x11vnc, QEMU and others) and macOS
+account logins (Apple Remote Desktop auth, used by macOS Screen Sharing). It
+only asks for a password if the server requires one:
+
+```sh
+rvnc myhost                          # prompts: VNC password for myhost:5900
+rvnc mymac --user alice              # macOS Screen Sharing as alice
+rvnc myhost --save-password          # save in the keychain after logging in
+rvnc myhost                          # next time, uses the saved password
+rvnc myhost --forget-password        # remove saved passwords for myhost:5900
+```
+
+Passwords come from `--password-file PATH` (or `-` for stdin), or
+`RVNC_PASSWORD`, then the keychain, then a terminal prompt. If a password is
+typed wrong, rvnc asks again, up to 3 times. If a saved password stops working,
+rvnc prompts and replaces it with the new one once that works. Saved passwords
+appear in Keychain Access under names starting `rvnc:`.
+
+If a Mac offers both kinds of login, rvnc uses the VNC password, unless you give
+`--user`. `--security vnc|ard|none` forces a choice.
+
+Neither kind of login encrypts the session itself. VNC passwords in
+particular are weak: only the first 8 characters count. Use them on a trusted
+network or over an SSH tunnel. Details: [docs/auth.md](docs/auth.md).
+
 Logging: `RUST_LOG=debug ./target/release/rvnc ...` (`trace` on
 `rvnc_client` logs every update; on `rvnc::app` every frame).
 
@@ -68,13 +97,15 @@ produces is sent, so Option-3 gives `#` on a UK layout.
 
 ## Development servers
 
-`dev/` has a Docker image running two password-less servers, bound to
-localhost only:
+`dev/` has a Docker image running four servers, bound to localhost only. Ports
+5901 and 5902 have no password; 5903 and 5904 use the VNC password `rvnc-dev`:
 
 ```sh
 docker compose -f dev/compose.yaml up -d --build
 cargo run --release -p rvnc-app -- localhost:5901   # TigerVNC Xvnc (display 1)
 cargo run --release -p rvnc-app -- localhost:5902   # x11vnc on Xvfb (display 2)
+cargo run --release -p rvnc-app -- localhost:5903   # TigerVNC with VNC password
+cargo run --release -p rvnc-app -- localhost:5904   # x11vnc with VNC password
 docker exec rvnc-dev-vnc-1 sh -c 'DISPLAY=:1 xrandr -s 1024x768'  # remote resize
 ```
 
@@ -82,6 +113,7 @@ A headless smoke test that saves the remote screen to a PNG:
 
 ```sh
 cargo run --release -p rvnc-client --example screenshot -- localhost:5901 out.png
+RVNC_PASSWORD=rvnc-dev cargo run --release -p rvnc-client --example screenshot -- localhost:5903 out.png
 ```
 
 ## Tests
@@ -103,8 +135,10 @@ cd crates/rvnc-proto && cargo +nightly fuzz run server_messages     # needs carg
 
 ## Known limitations
 
-- Servers that require a password don't work yet, including macOS Screen
-  Sharing. VNC password auth is next on the roadmap.
+- No TLS or VeNCrypt, so TigerVNC servers set up for TLS-only or
+  username/password (`Plain`) logins don't work yet.
+- With a locally built binary, macOS may ask to allow keychain access again
+  after each rebuild.
 - Only Raw and CopyRect encodings are supported, so it's bandwidth-hungry and
   meant for LAN use.
 - Scaling runs on the CPU via softbuffer, which costs about 11 ms per frame

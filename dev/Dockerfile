@@ -1,4 +1,4 @@
-# Development VNC servers for rvnc. No authentication: for local use only.
+# Development VNC servers for rvnc. No or weak authentication: local use only.
 FROM debian:bookworm-slim
 
 RUN apt-get update \
@@ -12,5 +12,6 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # 5901: TigerVNC Xvnc (display :1). 5902: x11vnc sharing an Xvfb (display :2).
-EXPOSE 5901 5902
+# 5903, 5904: the same, with VNC Authentication (password "rvnc-dev").
+EXPOSE 5901 5902 5903 5904
 ENTRYPOINT ["/entrypoint.sh"]

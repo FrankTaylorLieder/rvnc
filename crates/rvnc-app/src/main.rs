@@ -1,20 +1,25 @@
 //! rvnc: a VNC viewer for macOS.
 
 mod app;
+mod auth;
 mod input;
+mod keychain;
 mod keymap;
 mod present;
 mod view;
 
+use std::io::IsTerminal;
 use std::process::ExitCode;
 
 use anyhow::Context;
 use clap::{Parser, ValueEnum};
 use rvnc_client::{
-    ConnectOptions, DEFAULT_PORT, SessionEvent, connect, display_port, parse_address,
+    AppleAuth, ConnectError, ConnectOptions, DEFAULT_PORT, NoneSecurity, SecurityHandler,
+    SessionEvent, VncAuth, connect, display_port, parse_address,
 };
 use tracing_subscriber::EnvFilter;
 use winit::event_loop::EventLoop;
+use zeroize::Zeroizing;
 
 use crate::view::ScaleMode;
 
@@ -46,6 +51,63 @@ struct Args {
     /// Ask the server to disconnect other viewers.
     #[arg(long)]
     exclusive: bool,
+
+    /// Username for macOS Screen Sharing (Apple Remote Desktop auth). Also
+    /// makes ARD preferred over a VNC password when the server offers both.
+    #[arg(short, long)]
+    user: Option<String>,
+
+    /// Read the password from this file ("-" for stdin). The RVNC_PASSWORD
+    /// environment variable works too.
+    #[arg(long, value_name = "PATH")]
+    password_file: Option<String>,
+
+    /// Save the password in the macOS keychain after logging in.
+    #[arg(long, conflicts_with = "no_keychain")]
+    save_password: bool,
+
+    /// Don't look up or save passwords in the keychain.
+    #[arg(long)]
+    no_keychain: bool,
+
+    /// Remove saved passwords for this server from the keychain, then exit.
+    #[arg(long)]
+    forget_password: bool,
+
+    /// Only use this security type, rather than the best one both sides
+    /// support.
+    #[arg(long, value_enum)]
+    security: Option<SecurityArg>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum SecurityArg {
+    /// No authentication.
+    None,
+    /// VNC password.
+    Vnc,
+    /// Apple Remote Desktop (macOS account).
+    Ard,
+}
+
+impl Args {
+    fn security_handlers(&self) -> Vec<Box<dyn SecurityHandler>> {
+        let order = match (self.security, &self.user) {
+            (Some(only), _) => vec![only],
+            (None, Some(_)) => vec![SecurityArg::None, SecurityArg::Ard, SecurityArg::Vnc],
+            (None, None) => vec![SecurityArg::None, SecurityArg::Vnc, SecurityArg::Ard],
+        };
+        order
+            .into_iter()
+            .map(|t| -> Box<dyn SecurityHandler> {
+                match t {
+                    SecurityArg::None => Box::new(NoneSecurity),
+                    SecurityArg::Vnc => Box::new(VncAuth),
+                    SecurityArg::Ard => Box::new(AppleAuth),
+                }
+            })
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -80,19 +142,62 @@ fn run(args: Args) -> anyhow::Result<()> {
         (None, None) => address_port.unwrap_or(DEFAULT_PORT),
     };
 
+    let server = if host.contains(':') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    };
+
+    if args.forget_password {
+        let n = keychain::forget(&server).map_err(anyhow::Error::msg)?;
+        eprintln!("rvnc: removed {n} saved password(s) for {server}");
+        return Ok(());
+    }
+
+    let explicit_password = match &args.password_file {
+        Some(path) => Some(
+            auth::read_password_file(path)
+                .with_context(|| format!("reading password file {path}"))?,
+        ),
+        None => std::env::var("RVNC_PASSWORD").ok().map(Zeroizing::new),
+    };
+    let auth = auth::Auth::new(auth::Config {
+        server,
+        user: args.user.clone(),
+        interactive: explicit_password.is_none() && std::io::stdin().is_terminal(),
+        explicit_password,
+        use_keychain: !args.no_keychain,
+        save: args.save_password,
+    });
+
     let event_loop = EventLoop::<SessionEvent>::with_user_event()
         .build()
         .context("creating event loop")?;
     let proxy = event_loop.create_proxy();
 
-    let opts = ConnectOptions {
-        shared: !args.exclusive,
-        ..Default::default()
+    let session = loop {
+        let opts = ConnectOptions {
+            shared: !args.exclusive,
+            security: args.security_handlers(),
+            credentials: auth.provider(),
+            ..Default::default()
+        };
+        let proxy = proxy.clone();
+        let result = connect(&host, port, opts, move |e| {
+            // Fails only once the event loop has gone, when nobody cares.
+            let _ = proxy.send_event(e);
+        });
+        match result {
+            Ok(session) => {
+                auth.succeeded();
+                break session;
+            }
+            Err(ConnectError::AuthFailed(reason)) if auth.retry_after_failure() => {
+                eprintln!("rvnc: authentication failed: {reason}");
+            }
+            Err(e) => return Err(e.into()),
+        }
     };
-    let session = connect(&host, port, opts, move |e| {
-        // Fails only once the event loop has gone, when nobody cares.
-        let _ = proxy.send_event(e);
-    })?;
 
     let mut app = app::App::new(
         session,

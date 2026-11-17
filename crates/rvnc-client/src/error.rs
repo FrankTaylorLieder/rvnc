@@ -20,11 +20,14 @@ pub enum ConnectError {
     #[error("server refused the connection: {0}")]
     Refused(String),
 
-    #[error("server requires a security type rvnc does not support yet (offered: {})", describe(.0))]
+    #[error("server offers no security type rvnc can use (offered: {})", describe(.0))]
     NoSupportedSecurity(Vec<u8>),
 
     #[error("authentication failed: {0}")]
     AuthFailed(String),
+
+    #[error("server requires {}, but {reason}", security::name(*.security_type))]
+    NoCredentials { security_type: u8, reason: String },
 }
 
 fn describe(types: &[u8]) -> String {

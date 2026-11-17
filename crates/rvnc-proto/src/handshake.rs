@@ -146,7 +146,7 @@ pub fn read_security_result(
     match read_u32(r)? {
         0 => Ok(Ok(())),
         _ if version == Version::V3_8 => Ok(Err(read_reason(r)?)),
-        _ => Ok(Err("authentication failed".to_owned())),
+        _ => Ok(Err("the server gave no reason".to_owned())),
     }
 }
 

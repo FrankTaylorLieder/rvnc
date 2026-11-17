@@ -3,6 +3,7 @@
 //! This crate performs no network I/O of its own: decoders read from any
 //! [`std::io::Read`] and encoders append to a `Vec<u8>`. See `docs/protocol.md`.
 
+pub mod auth;
 pub mod client;
 pub mod encoding;
 mod error;

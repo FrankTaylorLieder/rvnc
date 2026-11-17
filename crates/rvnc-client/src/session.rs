@@ -12,7 +12,8 @@ use rvnc_proto::server::{Decoder, RectSink, ServerMessage};
 use rvnc_proto::{ProtoError, Rect};
 use tracing::{debug, info, trace, warn};
 
-use crate::handshake::{self, NoneSecurity, SecurityHandler};
+use crate::credentials::{CredentialProvider, NoCredentials};
+use crate::handshake::{self, AppleAuth, NoneSecurity, SecurityHandler, VncAuth};
 use crate::{ConnectError, Framebuffer};
 
 /// Options for [`connect`].
@@ -24,8 +25,11 @@ pub struct ConnectOptions {
     pub handshake_timeout: Duration,
     /// Encodings to advertise, in preference order.
     pub encodings: Vec<i32>,
-    /// Security types we can perform, in preference order.
+    /// Security types we can perform, in preference order. The first one the
+    /// server also offers is used.
     pub security: Vec<Box<dyn SecurityHandler>>,
+    /// Asked for a password if the chosen security type needs one.
+    pub credentials: Box<dyn CredentialProvider>,
 }
 
 impl Default for ConnectOptions {
@@ -35,9 +39,20 @@ impl Default for ConnectOptions {
             connect_timeout: Duration::from_secs(10),
             handshake_timeout: Duration::from_secs(10),
             encodings: handshake::default_encodings(),
-            security: vec![Box::new(NoneSecurity)],
+            security: default_security(),
+            credentials: Box::new(NoCredentials),
         }
     }
+}
+
+/// The security types rvnc supports, in default preference order: None,
+/// VNC Authentication, Apple Remote Desktop.
+pub fn default_security() -> Vec<Box<dyn SecurityHandler>> {
+    vec![
+        Box::new(NoneSecurity),
+        Box::new(VncAuth),
+        Box::new(AppleAuth),
+    ]
 }
 
 /// Facts about the server learned during the handshake.
@@ -158,6 +173,7 @@ pub fn connect_stream(
     let neg = handshake::run(
         &mut stream,
         &mut opts.security,
+        opts.credentials.as_mut(),
         opts.shared,
         &opts.encodings,
     )?;

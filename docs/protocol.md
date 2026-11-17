@@ -58,9 +58,12 @@ Security is implemented behind a trait so later types slot in:
 ```rust
 trait SecurityHandler {
     fn type_id(&self) -> u8;
-    fn authenticate(&mut self, stream: &mut dyn ReadWrite, version: Version) -> Result<(), HandshakeError>;
+    fn authenticate(&mut self, stream: &mut dyn ReadWrite, version: Version,
+                    credentials: &mut dyn CredentialProvider) -> Result<(), ConnectError>;
 }
 ```
+
+Implemented: `NoneSecurity`, `VncAuth` (type 2) and `AppleAuth` (type 30). See [auth.md](auth.md).
 
 ## Pixel format
 
@@ -161,4 +164,4 @@ macOS's built-in Screen Sharing does **not** offer security type None (it requir
 - **QEMU** VM with `-vnc :0` (no auth by default; good for raw/CopyRect and resize on guest mode changes).
 - **In-process fake server** in tests (see [plan.md](plan.md#testing-strategy)).
 
-VNC Auth (type 2: DES challenge-response, ~50 lines) is the first post-MVP item because it unlocks macOS Screen Sharing (when "VNC viewers may control screen with password" is enabled) and most real-world servers.
+VNC Authentication (type 2) and Apple Remote Desktop (type 30) were added after the MVP; see [auth.md](auth.md). The dev servers on ports 5903 and 5904 use VNC passwords.

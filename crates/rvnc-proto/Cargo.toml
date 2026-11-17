@@ -7,6 +7,10 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+aes = "0.8"
+des = "0.8"
+md-5 = "0.10"
+num-bigint = "0.4"
 thiserror.workspace = true
 
 [lints]

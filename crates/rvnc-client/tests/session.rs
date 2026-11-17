@@ -208,15 +208,15 @@ fn apple_version_negotiates_38() {
     let (addr, server) = serve(|mut s| {
         s.write_all(b"RFB 003.889\n").unwrap();
         assert_eq!(read_n(&mut s, 12), b"RFB 003.008\n");
-        s.write_all(&[2, 30, 2]).unwrap();
+        s.write_all(&[2, 19, 16]).unwrap();
     });
     let err = connect("127.0.0.1", addr, ConnectOptions::default(), |_| {})
         .err()
         .unwrap();
-    assert!(matches!(&err, ConnectError::NoSupportedSecurity(t) if t == &[30, 2]));
+    assert!(matches!(&err, ConnectError::NoSupportedSecurity(t) if t == &[19, 16]));
     let msg = err.to_string();
-    assert!(msg.contains("Apple Remote Desktop (30)"), "{msg}");
-    assert!(msg.contains("VNC Authentication (2)"), "{msg}");
+    assert!(msg.contains("VeNCrypt (19)"), "{msg}");
+    assert!(msg.contains("Tight (16)"), "{msg}");
     server.join().unwrap();
 }
 
@@ -371,4 +371,180 @@ fn pointer_moves_are_coalesced_but_clicks_are_not() {
     session.input().pointer(50, 0, 0);
     server.join().unwrap();
     drop(session);
+}
+
+// ---- Authentication ------------------------------------------------------
+
+use rvnc_client::proto::auth::vnc_auth_response;
+use rvnc_client::{CredentialRequest, Credentials};
+
+/// Sends the 3.8 version and security offer, reads the client's choice.
+fn offer_38(s: &mut TcpStream, types: &[u8]) -> u8 {
+    s.write_all(b"RFB 003.008\n").unwrap();
+    assert_eq!(read_n(s, 12), b"RFB 003.008\n");
+    let mut b = vec![types.len() as u8];
+    b.extend_from_slice(types);
+    s.write_all(&b).unwrap();
+    read_n(s, 1)[0]
+}
+
+/// SecurityResult OK through the initial update request.
+fn accept_38(s: &mut TcpStream) {
+    s.write_all(&[0, 0, 0, 0]).unwrap();
+    assert_eq!(read_n(s, 1), [1], "shared flag");
+    server_init(s, 4, 2, "auth desk");
+    after_init(s, 4, 2);
+}
+
+const CHALLENGE: [u8; 16] = *b"fedcba9876543210";
+
+fn vnc_server(password: &'static str) -> (u16, thread::JoinHandle<()>) {
+    serve(move |mut s| {
+        assert_eq!(offer_38(&mut s, &[2]), 2);
+        s.write_all(&CHALLENGE).unwrap();
+        let response = read_n(&mut s, 16);
+        if response == vnc_auth_response(&CHALLENGE, password.as_bytes()) {
+            accept_38(&mut s);
+        } else {
+            let reason = b"wrong password";
+            s.write_all(&[0, 0, 0, 1, 0, 0, 0, reason.len() as u8])
+                .unwrap();
+            s.write_all(reason).unwrap();
+        }
+    })
+}
+
+fn password_opts(password: &'static str, asked: mpsc::Sender<CredentialRequest>) -> ConnectOptions {
+    ConnectOptions {
+        credentials: Box::new(move |req: &CredentialRequest| {
+            asked.send(*req).unwrap();
+            Ok(Credentials::password(password))
+        }),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn vnc_auth_succeeds_with_right_password() {
+    let (port, server) = vnc_server("secret");
+    let (tx, asked) = mpsc::channel();
+    let session = connect("127.0.0.1", port, password_opts("secret", tx), |_| {}).unwrap();
+    assert_eq!(session.info().name, "auth desk");
+    assert_eq!(
+        asked.try_recv().unwrap(),
+        CredentialRequest {
+            security_type: 2,
+            username: false
+        }
+    );
+    session.close();
+    server.join().unwrap();
+}
+
+#[test]
+fn vnc_auth_wrong_password_reports_reason() {
+    let (port, server) = vnc_server("secret");
+    let (tx, _asked) = mpsc::channel();
+    let err = connect("127.0.0.1", port, password_opts("guess", tx), |_| {})
+        .err()
+        .unwrap();
+    assert!(
+        matches!(&err, ConnectError::AuthFailed(r) if r == "wrong password"),
+        "{err}"
+    );
+    server.join().unwrap();
+}
+
+#[test]
+fn vnc_auth_without_credentials_is_a_clear_error() {
+    let (port, server) = serve(|mut s| {
+        offer_38(&mut s, &[2]);
+        s.write_all(&CHALLENGE).unwrap();
+        // The client gives up without answering.
+        let mut b = [0u8; 1];
+        assert_eq!(s.read(&mut b).unwrap_or(0), 0);
+    });
+    let err = connect("127.0.0.1", port, ConnectOptions::default(), |_| {})
+        .err()
+        .unwrap();
+    assert!(
+        matches!(
+            err,
+            ConnectError::NoCredentials {
+                security_type: 2,
+                ..
+            }
+        ),
+        "{err}"
+    );
+    assert!(err.to_string().contains("VNC Authentication"), "{err}");
+    server.join().unwrap();
+}
+
+#[test]
+fn none_is_preferred_over_password_auth() {
+    let (port, server) = serve(|mut s| {
+        assert_eq!(offer_38(&mut s, &[30, 2, 1]), 1);
+        accept_38(&mut s);
+    });
+    let (tx, asked) = mpsc::channel();
+    let session = connect("127.0.0.1", port, password_opts("x", tx), |_| {}).unwrap();
+    assert!(asked.try_recv().is_err(), "no password should be requested");
+    session.close();
+    server.join().unwrap();
+}
+
+#[test]
+fn ard_sends_credentials_and_public_key() {
+    const KEY_LEN: usize = 16;
+    let (port, server) = serve(|mut s| {
+        assert_eq!(offer_38(&mut s, &[30, 33, 36, 35]), 30);
+        let mut b = vec![0, 2, 0, KEY_LEN as u8];
+        // 2^127 - 1 and an arbitrary server public key.
+        b.push(0x7f);
+        b.extend_from_slice(&[0xff; KEY_LEN - 1]);
+        b.extend_from_slice(&[0x11; KEY_LEN]);
+        s.write_all(&b).unwrap();
+        // 128-byte encrypted credentials, then our public key.
+        let reply = read_n(&mut s, 128 + KEY_LEN);
+        assert!(reply[..128].iter().any(|&b| b != 0));
+        accept_38(&mut s);
+    });
+    let (tx, asked) = mpsc::channel();
+    let opts = ConnectOptions {
+        credentials: Box::new(move |req: &CredentialRequest| {
+            tx.send(*req).unwrap();
+            Ok(Credentials::with_username("alice", "pw"))
+        }),
+        ..Default::default()
+    };
+    let session = connect("127.0.0.1", port, opts, |_| {}).unwrap();
+    assert_eq!(
+        asked.try_recv().unwrap(),
+        CredentialRequest {
+            security_type: 30,
+            username: true
+        }
+    );
+    session.close();
+    server.join().unwrap();
+}
+
+#[test]
+fn version_33_vnc_auth() {
+    let (port, server) = serve(|mut s| {
+        s.write_all(b"RFB 003.003\n").unwrap();
+        assert_eq!(read_n(&mut s, 12), b"RFB 003.003\n");
+        s.write_all(&[0, 0, 0, 2]).unwrap();
+        s.write_all(&CHALLENGE).unwrap();
+        assert_eq!(read_n(&mut s, 16), vnc_auth_response(&CHALLENGE, b"pw"));
+        s.write_all(&[0, 0, 0, 0]).unwrap();
+        assert_eq!(read_n(&mut s, 1), [1]);
+        server_init(&mut s, 4, 2, "old");
+        after_init(&mut s, 4, 2);
+    });
+    let (tx, _asked) = mpsc::channel();
+    let session = connect("127.0.0.1", port, password_opts("pw", tx), |_| {}).unwrap();
+    session.close();
+    server.join().unwrap();
 }

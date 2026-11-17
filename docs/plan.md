@@ -98,14 +98,14 @@ Each milestone ends in something runnable. Estimates are rough focused-hours for
 
 ## Post-MVP roadmap (ordered by value)
 
-1. **VNC Authentication** (type 2, DES) + password prompt (stdin or `rpassword` first, GUI later). Unlocks most real servers.
+1. ~~**VNC Authentication** (type 2, DES) + password prompt.~~ Done, with keychain storage; see [auth.md](auth.md).
 2. **ZRLE encoding** (zlib + tiles) — big bandwidth win; widely supported. Then **Tight** (zlib + JPEG; best over WAN).
 3. **Cursor pseudo-encoding** — local cursor rendering, no double cursor.
 4. **ExtendedDesktopSize / SetDesktopSize** — resize remote to match window.
 5. **Clipboard** sync (ServerCutText/ClientCutText, later Extended Clipboard for UTF-8).
-6. **Apple ARD auth** (type 30, DH + AES) — connect to macOS Screen Sharing natively.
+6. ~~**Apple ARD auth** (type 30, DH + AES).~~ Done, and verified against macOS Screen Sharing.
 7. **VeNCrypt / TLS** (`rustls`).
-8. **Connection UI**: egui overlay connect dialog, saved hosts, Keychain for passwords, Bonjour discovery.
+8. **Connection UI**: egui overlay connect dialog and GUI password prompt, saved hosts, Bonjour discovery. (Keychain storage is done.)
 9. **wgpu presenter** for smooth GPU scaling.
 10. **ContinuousUpdates + Fence** for lower latency.
 11. `.app` bundle (`cargo-bundle`), code signing, notarisation, Homebrew cask.

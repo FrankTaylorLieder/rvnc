@@ -19,6 +19,11 @@ tracing-subscriber.workspace = true
 clap.workspace = true
 winit.workspace = true
 softbuffer.workspace = true
+zeroize = "1"
+rpassword = "7"
 
 [lints]
 workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3"
