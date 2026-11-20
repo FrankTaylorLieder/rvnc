@@ -2,6 +2,10 @@
 //! allocate unboundedly on arbitrary input. A cheap stand-in for the
 //! cargo-fuzz target in `fuzz/`, run on every `cargo test`.
 
+use std::io::Write;
+
+use flate2::Compression;
+use flate2::write::ZlibEncoder;
 use rvnc_proto::handshake::{ServerInit, Version, read_security_offer};
 use rvnc_proto::server::{Decoder, RectSink};
 use rvnc_proto::{Rect, encoding};
@@ -45,9 +49,51 @@ impl RectSink for Checker {
     }
 }
 
+/// Random single-tile ZRLE data for a `w` x `h` rectangle (both <= 64).
+fn zrle_tile(rng: &mut Rng, w: u16, h: u16) -> Vec<u8> {
+    let n = usize::from(w) * usize::from(h);
+    let c = [rng.next() as u8, rng.next() as u8, rng.next() as u8];
+    match rng.below(4) {
+        0 => [&[1u8][..], &c].concat(),
+        1 => {
+            let mut t = vec![0u8];
+            for _ in 0..n {
+                t.extend_from_slice(&c);
+            }
+            t
+        }
+        2 => {
+            // Plain RLE: one run covering the tile.
+            let mut t = vec![128u8];
+            t.extend_from_slice(&c);
+            let mut left = n - 1;
+            while left >= 255 {
+                t.push(255);
+                left -= 255;
+            }
+            t.push(left as u8);
+            t
+        }
+        _ => {
+            // Two-colour packed palette.
+            let mut t = vec![2u8];
+            t.extend_from_slice(&c);
+            t.extend_from_slice(&[0, 0, 0]);
+            for _ in 0..h {
+                for _ in 0..usize::from(w).div_ceil(8) {
+                    t.push(rng.next() as u8);
+                }
+            }
+            t
+        }
+    }
+}
+
 /// Builds a plausible server stream so mutations reach deep code paths.
 fn valid_stream(rng: &mut Rng) -> Vec<u8> {
     let mut b = Vec::new();
+    // One zlib stream per connection, as real servers do.
+    let mut z = ZlibEncoder::new(Vec::new(), Compression::fast());
     for _ in 0..rng.below(4) + 1 {
         match rng.below(4) {
             0 => {
@@ -57,14 +103,27 @@ fn valid_stream(rng: &mut Rng) -> Vec<u8> {
                 for _ in 0..n {
                     let (w, h) = (rng.below(5) as u16, rng.below(5) as u16);
                     let (x, y) = (rng.below(8) as u16, rng.below(8) as u16);
-                    let enc = [encoding::RAW, encoding::COPY_RECT, encoding::DESKTOP_SIZE]
-                        [rng.below(3) as usize];
+                    let enc = [
+                        encoding::RAW,
+                        encoding::COPY_RECT,
+                        encoding::DESKTOP_SIZE,
+                        encoding::ZRLE,
+                    ][rng.below(4) as usize];
                     for v in [x, y, w, h] {
                         b.extend_from_slice(&v.to_be_bytes());
                     }
                     b.extend_from_slice(&enc.to_be_bytes());
                     match enc {
                         encoding::RAW => b.extend(std::iter::repeat_n(7u8, usize::from(w * h) * 4)),
+                        encoding::ZRLE => {
+                            if w > 0 && h > 0 {
+                                z.write_all(&zrle_tile(rng, w, h)).unwrap();
+                            }
+                            z.flush().unwrap();
+                            let data = std::mem::take(z.get_mut());
+                            b.extend_from_slice(&(data.len() as u32).to_be_bytes());
+                            b.extend_from_slice(&data);
+                        }
                         encoding::COPY_RECT => {
                             b.extend_from_slice(&(rng.below(8) as u16).to_be_bytes());
                             b.extend_from_slice(&(rng.below(8) as u16).to_be_bytes());

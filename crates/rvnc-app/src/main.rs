@@ -13,6 +13,7 @@ use std::process::ExitCode;
 
 use anyhow::Context;
 use clap::{Parser, ValueEnum};
+use rvnc_client::proto::encoding;
 use rvnc_client::{
     AppleAuth, ConnectError, ConnectOptions, DEFAULT_PORT, NoneSecurity, SecurityHandler,
     SessionEvent, VncAuth, connect, display_port, parse_address,
@@ -48,6 +49,11 @@ struct Args {
     #[arg(long, value_enum, default_value_t = ScaleArg::Fit)]
     scale: ScaleArg,
 
+    /// Pixel encoding: zrle compresses (best on most networks); raw uses
+    /// less CPU on very fast links.
+    #[arg(long, value_enum, default_value_t = EncodingArg::Zrle)]
+    encoding: EncodingArg,
+
     /// Ask the server to disconnect other viewers.
     #[arg(long)]
     exclusive: bool,
@@ -78,6 +84,12 @@ struct Args {
     /// support.
     #[arg(long, value_enum)]
     security: Option<SecurityArg>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum EncodingArg {
+    Zrle,
+    Raw,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -179,6 +191,10 @@ fn run(args: Args) -> anyhow::Result<()> {
         let opts = ConnectOptions {
             shared: !args.exclusive,
             security: args.security_handlers(),
+            encodings: match args.encoding {
+                EncodingArg::Zrle => encoding::SUPPORTED.to_vec(),
+                EncodingArg::Raw => encoding::UNCOMPRESSED.to_vec(),
+            },
             credentials: auth.provider(),
             ..Default::default()
         };

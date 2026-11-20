@@ -4,6 +4,7 @@ use std::io::Read;
 
 use crate::handshake::check_size;
 use crate::wire::{read_bytes_u32, read_i32, read_u8, read_u16, skip};
+use crate::zrle::ZrleDecoder;
 use crate::{MAX_CUT_TEXT_LEN, ProtoError, Rect, encoding};
 
 /// Receives decoded rectangles. Implemented by the client's framebuffer.
@@ -42,6 +43,9 @@ pub enum ServerMessage {
 #[derive(Debug, Default)]
 pub struct Decoder {
     scratch: Vec<u8>,
+    /// Created on the first ZRLE rectangle; its zlib stream spans the
+    /// connection.
+    zrle: Option<Box<ZrleDecoder>>,
 }
 
 const BYTES_PER_PIXEL: usize = 4;
@@ -95,6 +99,15 @@ impl Decoder {
             let enc = read_i32(r)?;
             match enc {
                 encoding::RAW => self.read_raw(r, sink, rect)?,
+                encoding::ZRLE => {
+                    check_bounds(sink, rect)?;
+                    let zrle = self.zrle.get_or_insert_default();
+                    zrle.read_rect(r, rect, &mut self.scratch)?;
+                    if !rect.is_empty() {
+                        sink.raw(rect, &self.scratch);
+                    }
+                    self.trim_scratch();
+                }
                 encoding::COPY_RECT => {
                     let src_x = read_u16(r)?;
                     let src_y = read_u16(r)?;
@@ -128,12 +141,16 @@ impl Decoder {
         if len > 0 {
             sink.raw(rect, &self.scratch);
         }
-        // Don't hold on to a huge buffer after a one-off full-screen update
-        // on a very large desktop.
+        self.trim_scratch();
+        Ok(())
+    }
+
+    /// Don't hold on to a huge buffer after a one-off full-screen update on
+    /// a very large desktop.
+    fn trim_scratch(&mut self) {
         if self.scratch.capacity() > 64 * 1024 * 1024 {
             self.scratch = Vec::new();
         }
-        Ok(())
     }
 }
 
@@ -285,11 +302,11 @@ mod tests {
     #[test]
     fn unrequested_encoding_is_error() {
         let mut buf = update(1);
-        rect_header(&mut buf, 0, 0, 1, 1, encoding::ZRLE);
+        rect_header(&mut buf, 0, 0, 1, 1, encoding::TIGHT);
         let err = Decoder::new()
             .read_message(&mut buf.as_slice(), &mut sink(4, 4))
             .unwrap_err();
-        assert!(matches!(err, ProtoError::UnsupportedEncoding(16)));
+        assert!(matches!(err, ProtoError::UnsupportedEncoding(7)));
     }
 
     #[test]

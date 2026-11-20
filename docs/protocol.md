@@ -12,12 +12,29 @@ All multi-byte integers on the wire are **big-endian** unless they are pixel dat
 |---|---|---|
 | Versions | 3.3, 3.7, 3.8 | — |
 | Security | None (1) | VNC Auth (2), VeNCrypt/TLS (19), Apple ARD (30), RA2 |
-| Encodings | Raw (0), CopyRect (1) | ZRLE (16), Tight (7), Hextile (5), TRLE (15) |
+| Encodings | Raw (0), CopyRect (1); ZRLE (16) added after MVP | Tight (7), Hextile (5), TRLE (15) |
 | Pseudo-encodings | DesktopSize (-223) | ExtendedDesktopSize (-308), Cursor (-239), LastRect (-224), ContinuousUpdates (-313), QEMU Extended Key (-258), Fence (-312) |
 | Client → server | SetPixelFormat, SetEncodings, FramebufferUpdateRequest, KeyEvent, PointerEvent | ClientCutText, SetDesktopSize |
 | Server → client | FramebufferUpdate, SetColourMapEntries (parse & ignore), Bell, ServerCutText (parse & ignore) | Clipboard integration |
 
 **Rule: every server message type the MVP might receive must be fully parsed even if ignored**, otherwise the stream desynchronises. Unknown message types are a fatal protocol error (there is no length prefix to skip them).
+
+## ZRLE
+
+ZRLE (encoding 16) is the default since the MVP, implemented in `rvnc-proto/src/zrle.rs`. The module doc there describes the format.
+
+- **Rectangle layout.** A rectangle is a `u32` length followed by zlib data.
+  - One zlib stream spans the whole connection. The `Decoder` creates the inflater on the first ZRLE rectangle and keeps it.
+  - Servers sync-flush at the end of each rectangle, so each rectangle inflates completely by itself.
+- **Tiles.** The inflated data is 64×64 tiles, each with a subencoding: raw, solid, packed palette (2–16 colours), plain RLE or palette RLE.
+  - Each CPIXEL is 3 bytes (`B G R`), because rvnc's pixel format puts all colour in the low 3 bytes of a 32-bit pixel.
+  - Each tile is decoded into a contiguous 64×64 buffer, then copied into a rectangle-sized buffer.
+  - The whole rectangle reaches the `RectSink` as one `raw` call, so the framebuffer lock is taken once per rectangle, as with Raw.
+- **Limits.** The compressed data is read and inflated in 64 KiB pieces, not all at once. Inflated output is capped at the most a valid rectangle of that size can need, `w·h·4` plus 382 bytes per tile. This stops a zlib bomb from allocating unboundedly. Corrupt data gives `ProtoError::BadData`.
+- **Measured on the dev servers:**
+  - A 1280×800 text-heavy screen is 4.1 MB with Raw and 63 KB with ZRLE, with pixel-identical results.
+  - 8 s of continuously scrolling text needs 405 MiB with Raw and 16 MiB with ZRLE, at the same update rate.
+  - The worst case, a 1080p frame of incompressible noise, decodes in 4–8 ms.
 
 ## Handshake state machine
 

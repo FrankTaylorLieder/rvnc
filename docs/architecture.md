@@ -14,7 +14,7 @@ Status: draft for MVP · Related: [protocol.md](protocol.md), [ui-framework.md](
 **Non-goals for MVP** (designed for, not built)
 
 - TLS / VeNCrypt, VNC password auth, Apple ARD auth. (VNC password and ARD auth have since been added; see [auth.md](auth.md).)
-- Compressed encodings (ZRLE, Tight, Hextile), cursor pseudo-encoding.
+- Compressed encodings (ZRLE, Tight, Hextile), cursor pseudo-encoding. (ZRLE has since been added.)
 - Clipboard sync, file transfer, audio, multiple simultaneous sessions.
 - Connection manager / saved hosts UI, `.app` bundling and notarisation.
 - Windows / Linux (but nothing in the design should block them).
@@ -146,7 +146,9 @@ We send `SetPixelFormat` immediately after `ServerInit` asking for **32 bpp, dep
 
 Added with auth: `des`, `aes`, `md-5`, `num-bigint` (`rvnc-proto`), `getrandom`, `zeroize` (`rvnc-client`), `rpassword`, and `security-framework` on macOS only (`rvnc-app`).
 
-Deliberately *not* used: `tokio`, `wgpu`, `flate2`/`zlib` (needed for ZRLE/Tight later).
+Added with ZRLE: `flate2` (pure-Rust `miniz_oxide` backend; `zlib-rs` was no faster here).
+
+Deliberately *not* used: `tokio`, `wgpu`.
 
 ## Future-proofing notes
 

@@ -3,8 +3,8 @@
 A VNC (RFB) viewer for macOS, written in Rust.
 
 **Status:** MVP plus password auth. Connects to servers with no password, a
-VNC password, or a macOS account (Screen Sharing), using Raw and CopyRect
-encodings. See [docs/rnvc.md](docs/rnvc.md) for the design and roadmap.
+VNC password, or a macOS account (Screen Sharing), using ZRLE, CopyRect and
+Raw encodings. See [docs/rnvc.md](docs/rnvc.md) for the design and roadmap.
 
 ## Install
 
@@ -28,8 +28,12 @@ cargo uninstall rvnc-app
 cargo build --release
 ./target/release/rvnc <host>[:port] [--port PORT | --display N] [--view-only] [--scale fit|1:1] [--exclusive]
                       [--user NAME] [--password-file PATH] [--save-password | --no-keychain]
-                      [--forget-password] [--security none|vnc|ard]
+                      [--forget-password] [--security none|vnc|ard] [--encoding zrle|raw]
 ```
+
+rvnc uses ZRLE compression by default. On a text-heavy desktop it needs about
+25 to 65 times less bandwidth than uncompressed Raw. `--encoding raw` turns
+compression off, which saves a little CPU on a very fast local link.
 
 To install from a local checkout:
 
@@ -78,7 +82,8 @@ particular are weak: only the first 8 characters count. Use them on a trusted
 network or over an SSH tunnel. Details: [docs/auth.md](docs/auth.md).
 
 Logging: `RUST_LOG=debug ./target/release/rvnc ...` (`trace` on
-`rvnc_client` logs every update; on `rvnc::app` every frame).
+`rvnc_client` logs every update; on `rvnc::app` every frame). At exit, the log
+shows how many bytes were received.
 
 ## Keyboard shortcuts
 
@@ -122,6 +127,7 @@ RVNC_PASSWORD=rvnc-dev cargo run --release -p rvnc-client --example screenshot -
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --release -p rvnc-app -- --ignored --nocapture bench   # render micro-benchmark
+cargo test --release -p rvnc-proto -- --ignored --nocapture zrle_bench   # ZRLE decode benchmark
 cd crates/rvnc-proto && cargo +nightly fuzz run server_messages     # needs cargo-fuzz
 ```
 
@@ -139,8 +145,8 @@ cd crates/rvnc-proto && cargo +nightly fuzz run server_messages     # needs carg
   username/password (`Plain`) logins don't work yet.
 - With a locally built binary, macOS may ask to allow keychain access again
   after each rebuild.
-- Only Raw and CopyRect encodings are supported, so it's bandwidth-hungry and
-  meant for LAN use.
+- ZRLE is the only compressed encoding so far. Tight, which uses JPEG and is
+  better for photos and video over slow links, isn't supported yet.
 - Scaling runs on the CPU via softbuffer, which costs about 11 ms per frame
   for a full Retina window. That caps rendering at roughly 60–80 fps.
 - The remote cursor is drawn by the server, so you see two cursors.

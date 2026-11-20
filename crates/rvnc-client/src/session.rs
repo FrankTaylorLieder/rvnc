@@ -1,4 +1,4 @@
-use std::io::{BufReader, BufWriter, Write};
+use std::io::{BufReader, BufWriter, Read, Write};
 use std::net::{Shutdown, TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -309,7 +309,7 @@ fn reader_loop(
     closing: Arc<AtomicBool>,
     events: impl EventSink,
 ) {
-    let mut r = BufReader::with_capacity(256 * 1024, stream);
+    let mut r = BufReader::with_capacity(256 * 1024, Counting::new(stream));
     let mut sink = SharedSink { fb, width, height };
     let mut decoder = Decoder::new();
 
@@ -341,6 +341,13 @@ fn reader_loop(
         }
     };
 
+    let received = r.get_ref().bytes;
+    info!(
+        bytes = received,
+        mib = format_args!("{:.1}", received as f64 / (1024.0 * 1024.0)),
+        "received from server"
+    );
+
     let error = if closing.load(Ordering::SeqCst) {
         None
     } else {
@@ -352,6 +359,26 @@ fn reader_loop(
     }
     let _ = tx.send(Command::Shutdown);
     events.send(SessionEvent::Disconnected { error });
+}
+
+/// Counts bytes read, for the bandwidth summary.
+struct Counting<R> {
+    inner: R,
+    bytes: u64,
+}
+
+impl<R> Counting<R> {
+    fn new(inner: R) -> Self {
+        Self { inner, bytes: 0 }
+    }
+}
+
+impl<R: Read> Read for Counting<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.bytes += n as u64;
+        Ok(n)
+    }
 }
 
 fn describe_disconnect(e: &ProtoError) -> String {

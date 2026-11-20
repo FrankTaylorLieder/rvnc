@@ -14,5 +14,9 @@ pub const CURSOR: i32 = -239;
 pub const QEMU_EXTENDED_KEY_EVENT: i32 = -258;
 pub const EXTENDED_DESKTOP_SIZE: i32 = -308;
 
-/// Encodings the MVP decoder understands, in order of preference.
-pub const SUPPORTED: &[i32] = &[COPY_RECT, RAW, DESKTOP_SIZE];
+/// Encodings the decoder understands, in order of preference. Servers pick
+/// the first one they support for each rectangle.
+pub const SUPPORTED: &[i32] = &[ZRLE, COPY_RECT, RAW, DESKTOP_SIZE];
+
+/// [`SUPPORTED`] without compression: cheaper on CPU, for fast local links.
+pub const UNCOMPRESSED: &[i32] = &[COPY_RECT, RAW, DESKTOP_SIZE];

@@ -38,6 +38,11 @@ fn main() -> anyhow::Result<()> {
                 _ => Credentials::password(password),
             })
         }),
+        // RVNC_ENCODING=raw turns off compression, e.g. to compare output.
+        encodings: match std::env::var("RVNC_ENCODING").as_deref() {
+            Ok("raw") => rvnc_client::proto::encoding::UNCOMPRESSED.to_vec(),
+            _ => rvnc_client::proto::encoding::SUPPORTED.to_vec(),
+        },
         ..Default::default()
     };
     let session = connect(&host, port, opts, move |e| {

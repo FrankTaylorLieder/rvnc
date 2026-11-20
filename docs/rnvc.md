@@ -18,7 +18,7 @@ been verified and what's left.
 
 Full detail: [architecture.md](architecture.md) · [protocol.md](protocol.md) · [ui-framework.md](ui-framework.md) · [input.md](input.md) · [auth.md](auth.md)
 
-- **Protocol:** RFB per RFC 6143. Negotiates versions 3.3 / 3.7 / 3.8. Supports security types None, VNC Authentication and Apple Remote Desktop (see [auth.md](auth.md)), Raw and CopyRect encodings, and the DesktopSize pseudo-encoding. The client asks the server for 32-bit BGRX pixels so data can be copied straight into the display buffer with no conversion.
+- **Protocol:** RFB per RFC 6143. Negotiates versions 3.3 / 3.7 / 3.8. Supports security types None, VNC Authentication and Apple Remote Desktop (see [auth.md](auth.md)), ZRLE, CopyRect and Raw encodings, and the DesktopSize pseudo-encoding. The client asks the server for 32-bit BGRX pixels so data can be copied straight into the display buffer with no conversion.
 - **Crate layout:** Cargo workspace with three crates:
   - `rvnc-proto`: pure protocol encode/decode, with no I/O, so it is easy to test and fuzz.
   - `rvnc-client`: TCP session, handshake, framebuffer and threads. It has no UI dependency.
@@ -51,6 +51,6 @@ Done when: `rvnc <host>[:port]` shows and controls a TigerVNC desktop (`-Securit
 
 ### After MVP (in priority order)
 
-~~VNC password auth~~ (done) → ZRLE/Tight → cursor pseudo-encoding → resize remote to window → clipboard → ~~Apple ARD auth~~ (done) → TLS → connect dialog/Bonjour → wgpu renderer → `.app` bundle and notarisation → Windows/Linux.
+~~VNC password auth~~ (done) → ~~ZRLE~~ (done) → Tight → cursor pseudo-encoding → resize remote to window → clipboard → ~~Apple ARD auth~~ (done) → TLS → connect dialog/Bonjour → wgpu renderer → `.app` bundle and notarisation → Windows/Linux.
 
 Note: macOS's built-in Screen Sharing requires authentication. VNC password and Apple Remote Desktop auth are now implemented, and rvnc connects to it.

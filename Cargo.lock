@@ -1590,6 +1590,7 @@ version = "0.1.0"
 dependencies = [
  "aes",
  "des",
+ "flate2",
  "md-5",
  "num-bigint",
  "thiserror 2.0.21",

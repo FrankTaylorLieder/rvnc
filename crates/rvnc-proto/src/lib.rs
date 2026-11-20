@@ -11,6 +11,7 @@ pub mod handshake;
 pub mod pixel_format;
 pub mod server;
 mod wire;
+mod zrle;
 
 pub use error::ProtoError;
 pub use pixel_format::PixelFormat;

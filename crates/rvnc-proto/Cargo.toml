@@ -9,6 +9,7 @@ rust-version.workspace = true
 [dependencies]
 aes = "0.8"
 des = "0.8"
+flate2 = "1"
 md-5 = "0.10"
 num-bigint = "0.4"
 thiserror.workspace = true
